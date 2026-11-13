@@ -1,0 +1,1146 @@
+"use client";
+
+import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { supabase } from "@/lib/supabase";
+
+type DiscussionGroup = {
+  id: string;
+  name: string;
+  description: string;
+  created_by: string;
+  created_at: string;
+};
+
+type Discussion = {
+  id: string;
+  group_id: string | null;
+  title: string;
+  body: string;
+  created_by: string;
+  created_at: string;
+};
+
+type DiscussionReply = {
+  id: string;
+  discussion_id: string;
+  body: string;
+  created_by: string;
+  created_at: string;
+};
+
+type UserProfile = {
+  role: string;
+  approval_status: string;
+};
+
+type CoordinatorProfile = {
+  id: string;
+  full_name: string;
+  email: string | null;
+  role: string;
+  approval_status: string;
+};
+
+type GroupMembership = {
+  group_id: string;
+  user_id: string;
+  joined_at: string;
+};
+
+export default function DiscussionsPanel() {
+  const [userId, setUserId] = useState("");
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [approvedUsers, setApprovedUsers] = useState<CoordinatorProfile[]>([]);
+  const [memberships, setMemberships] = useState<GroupMembership[]>([]);
+  const [selectedUserToAdd, setSelectedUserToAdd] = useState("");
+  const [groups, setGroups] = useState<DiscussionGroup[]>([]);
+  const [discussions, setDiscussions] = useState<Discussion[]>([]);
+  const [replies, setReplies] = useState<DiscussionReply[]>([]);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [selectedDiscussionId, setSelectedDiscussionId] = useState("");
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [replyBody, setReplyBody] = useState("");
+  const [groupName, setGroupName] = useState("");
+  const [groupDescription, setGroupDescription] = useState("");
+  const [showGroupForm, setShowGroupForm] = useState(false);
+  const [showDiscussionForm, setShowDiscussionForm] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+
+  const isAdmin = profile?.role === "national_admin";
+  const selectedDiscussion = discussions.find(
+    (discussion) => discussion.id === selectedDiscussionId,
+  );
+
+  const loadGroups = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("discussion_groups")
+      .select("id, name, description, created_by, created_at")
+      .order("name", { ascending: true });
+
+    if (error) throw error;
+    setGroups((data ?? []) as DiscussionGroup[]);
+  }, []);
+
+  const loadGroupMembers = useCallback(async () => {
+    if (!selectedGroupId || !isAdmin) {
+      setMemberships([]);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("discussion_group_members")
+      .select("group_id, user_id, joined_at")
+      .eq("group_id", selectedGroupId)
+      .order("joined_at", { ascending: true });
+
+    if (error) {
+      setErrorMessage(error.message);
+      setMemberships([]);
+      return;
+    }
+
+    setMemberships((data ?? []) as GroupMembership[]);
+  }, [selectedGroupId, isAdmin]);
+
+  const loadDiscussions = useCallback(async () => {
+    setLoading(true);
+    setErrorMessage("");
+
+    try {
+      let query = supabase
+        .from("discussions")
+        .select("id, group_id, title, body, created_by, created_at")
+        .order("created_at", { ascending: false });
+
+      query = selectedGroupId
+        ? query.eq("group_id", selectedGroupId)
+        : query.is("group_id", null);
+
+      const { data, error } = await query;
+
+      if (error) throw error;
+
+      const loaded = (data ?? []) as Discussion[];
+      setDiscussions(loaded);
+
+      setSelectedDiscussionId((current) =>
+        loaded.some((discussion) => discussion.id === current)
+          ? current
+          : "",
+      );
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to load discussions.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedGroupId]);
+
+  const loadReplies = useCallback(async () => {
+    if (!selectedDiscussionId) {
+      setReplies([]);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("discussion_replies")
+      .select("id, discussion_id, body, created_by, created_at")
+      .eq("discussion_id", selectedDiscussionId)
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      setErrorMessage(error.message);
+      setReplies([]);
+      return;
+    }
+
+    setReplies((data ?? []) as DiscussionReply[]);
+  }, [selectedDiscussionId]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const { data, error } = await supabase.auth.getUser();
+
+          if (error) throw error;
+
+          if (!data.user) {
+            setErrorMessage("Please sign in to access discussions.");
+            setLoading(false);
+            return;
+          }
+
+          setUserId(data.user.id);
+
+          const { data: profileData, error: profileError } = await supabase
+            .from("profiles")
+            .select("role, approval_status")
+            .eq("id", data.user.id)
+            .single();
+
+          if (profileError) throw profileError;
+
+          if (profileData.approval_status !== "approved") {
+            setErrorMessage(
+              "Your account must be approved before you can participate.",
+            );
+            setLoading(false);
+            return;
+          }
+
+          setProfile(profileData as UserProfile);
+
+          if (profileData.role === "national_admin") {
+            const { data: userData, error: userError } = await supabase
+              .from("profiles")
+              .select("id, full_name, email, role, approval_status")
+              .eq("approval_status", "approved")
+              .neq("role", "national_admin")
+              .order("full_name", { ascending: true });
+
+            if (userError) throw userError;
+
+            setApprovedUsers((userData ?? []) as CoordinatorProfile[]);
+          }
+
+          await loadGroups();
+        } catch (error) {
+          setErrorMessage(
+            error instanceof Error
+              ? error.message
+              : "Unable to verify your account.",
+          );
+          setLoading(false);
+        }
+      })();
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [loadGroups]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void loadGroupMembers();
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [loadGroupMembers]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void loadDiscussions();
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [loadDiscussions]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void loadReplies();
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [loadReplies]);
+
+  async function addGroupMember(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true);
+    setErrorMessage("");
+    setMessage("");
+
+    try {
+      if (!isAdmin || !selectedGroupId) {
+        throw new Error("Select a group as National Administrator first.");
+      }
+
+      if (!selectedUserToAdd) {
+        throw new Error("Select a coordinator to add.");
+      }
+
+      if (memberships.some((member) => member.user_id === selectedUserToAdd)) {
+        throw new Error("This coordinator is already a group member.");
+      }
+
+      const { error } = await supabase
+        .from("discussion_group_members")
+        .insert({
+          group_id: selectedGroupId,
+          user_id: selectedUserToAdd,
+        });
+
+      if (error) throw error;
+
+      const addedUser = approvedUsers.find(
+        (user) => user.id === selectedUserToAdd,
+      );
+
+      setSelectedUserToAdd("");
+      await loadGroupMembers();
+      setMessage(
+        `${addedUser?.full_name || "Coordinator"} added to the group successfully.`,
+      );
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "Unable to add the member.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function removeGroupMember(userIdToRemove: string) {
+    if (!isAdmin || !selectedGroupId) return;
+
+    const member = approvedUsers.find((user) => user.id === userIdToRemove);
+    const confirmed = window.confirm(
+      `Remove ${member?.full_name || "this coordinator"} from this group?`,
+    );
+
+    if (!confirmed) return;
+
+    setSaving(true);
+    setErrorMessage("");
+    setMessage("");
+
+    try {
+      const { error } = await supabase
+        .from("discussion_group_members")
+        .delete()
+        .eq("group_id", selectedGroupId)
+        .eq("user_id", userIdToRemove);
+
+      if (error) throw error;
+
+      await loadGroupMembers();
+      setMessage(
+        `${member?.full_name || "Coordinator"} removed from the group.`,
+      );
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "Unable to remove the member.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function createDiscussion(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true);
+    setErrorMessage("");
+    setMessage("");
+
+    try {
+      if (!userId || profile?.approval_status !== "approved") {
+        throw new Error("An approved, signed-in account is required.");
+      }
+
+      if (!title.trim() || !body.trim()) {
+        throw new Error("Enter both a discussion title and message.");
+      }
+
+      const { data: sessionData, error: sessionError } =
+        await supabase.auth.getSession();
+
+      if (sessionError) throw sessionError;
+      const accessToken = sessionData.session?.access_token;
+      if (!accessToken) throw new Error("Please sign in again before posting.");
+
+      const response = await fetch("/api/moderated-post", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          kind: "discussion",
+          title: title.trim(),
+          body: body.trim(),
+          group_id: selectedGroupId,
+        }),
+      });
+
+      const result = (await response.json()) as {
+        record?: { id: string };
+        mode?: "ai" | "rules";
+        error?: string;
+      };
+
+      if (!response.ok || !result.record?.id) {
+        throw new Error(result.error || "Unable to create the discussion.");
+      }
+
+      const data = result.record;
+      const safety = { mode: result.mode };
+
+      setTitle("");
+      setBody("");
+      setShowDiscussionForm(false);
+      setMessage(
+        safety.mode === "ai"
+          ? "Discussion created and passed AI moderation."
+          : "Discussion created. Basic safety checks were used; AI moderation is not configured yet.",
+      );
+      await loadDiscussions();
+      setSelectedDiscussionId(data.id);
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to create the discussion.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function createGroup(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true);
+    setErrorMessage("");
+    setMessage("");
+
+    try {
+      if (!isAdmin || !userId) {
+        throw new Error("Only a National Administrator can create groups.");
+      }
+
+      const { data: group, error: groupError } = await supabase
+        .from("discussion_groups")
+        .insert({
+          name: groupName.trim(),
+          description: groupDescription.trim(),
+          created_by: userId,
+        })
+        .select("id, name, description, created_by, created_at")
+        .single();
+
+      if (groupError) throw groupError;
+
+      const { error: memberError } = await supabase
+        .from("discussion_group_members")
+        .insert({
+          group_id: group.id,
+          user_id: userId,
+        });
+
+      if (memberError) {
+        throw new Error(
+          `The group was created, but adding you as a member failed: ${memberError.message}`,
+        );
+      }
+
+      setGroupName("");
+      setGroupDescription("");
+      setShowGroupForm(false);
+      await loadGroups();
+      setSelectedGroupId(group.id);
+      setSelectedDiscussionId("");
+      setMessage("Group created. You have been added as a member.");
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "Unable to create the group.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function createReply(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true);
+    setErrorMessage("");
+    setMessage("");
+
+    try {
+      if (!selectedDiscussionId || !userId) {
+        throw new Error("Select a discussion before replying.");
+      }
+
+      if (!replyBody.trim()) {
+        throw new Error("Enter a reply before posting.");
+      }
+
+      const { data: sessionData, error: sessionError } =
+        await supabase.auth.getSession();
+
+      if (sessionError) throw sessionError;
+      const accessToken = sessionData.session?.access_token;
+      if (!accessToken) throw new Error("Please sign in again before posting.");
+
+      const response = await fetch("/api/moderated-post", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          kind: "reply",
+          discussion_id: selectedDiscussionId,
+          body: replyBody.trim(),
+        }),
+      });
+
+      const result = (await response.json()) as {
+        record?: { id: string };
+        mode?: "ai" | "rules";
+        error?: string;
+      };
+
+      if (!response.ok || !result.record?.id) {
+        throw new Error(result.error || "Unable to post your reply.");
+      }
+
+      const safety = { mode: result.mode };
+
+      setReplyBody("");
+      await loadReplies();
+      setMessage(
+        safety.mode === "ai"
+          ? "Reply posted and passed AI moderation."
+          : "Reply posted. Basic safety checks were used; AI moderation is not configured yet.",
+      );
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "Unable to post your reply.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const panelStyle = {
+    border: "1px solid #26352B",
+    borderRadius: 16,
+    background: "#101511",
+    padding: 20,
+  } as const;
+
+  const inputStyle = {
+    width: "100%",
+    boxSizing: "border-box" as const,
+    padding: "11px 12px",
+    border: "1px solid #344139",
+    borderRadius: 9,
+    background: "#080B09",
+    color: "#FFFFFF",
+    marginTop: 6,
+  } as const;
+
+  const buttonStyle = {
+    border: "1px solid #31543A",
+    borderRadius: 9,
+    padding: "9px 13px",
+    background: "#163820",
+    color: "#FFFFFF",
+    cursor: "pointer",
+  } as const;
+
+  if (loading && !profile && !errorMessage) {
+    return (
+      <section style={panelStyle}>
+        <p style={{ color: "#D1D5DB" }}>Loading discussions…</p>
+      </section>
+    );
+  }
+
+  if (errorMessage && !profile) {
+    return (
+      <section style={panelStyle}>
+        <h2 style={{ color: "#FFFFFF", fontSize: 22, fontWeight: 700 }}>
+          Discussions unavailable
+        </h2>
+        <p role="alert" style={{ color: "#FCA5A5", marginTop: 10 }}>
+          {errorMessage}
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    <section style={{ color: "#FFFFFF", display: "grid", gap: 20 }}>
+      <header
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 12,
+          flexWrap: "wrap",
+        }}
+      >
+        <div>
+          <p
+            style={{
+              color: "#4ADE80",
+              fontSize: 11,
+              letterSpacing: 2,
+              fontWeight: 700,
+            }}
+          >
+            SCHOOL COORDINATION
+          </p>
+          <h1 style={{ fontSize: 28, fontWeight: 800, marginTop: 5 }}>
+            Discussions
+          </h1>
+          <p style={{ color: "#A7B0A9", marginTop: 5 }}>
+            Share ideas, exchange experience and coordinate action.
+          </p>
+        </div>
+
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {isAdmin && (
+            <button
+              type="button"
+              style={buttonStyle}
+              onClick={() => setShowGroupForm((value) => !value)}
+            >
+              {showGroupForm ? "Cancel group" : "+ New group"}
+            </button>
+          )}
+          <button
+            type="button"
+            style={{ ...buttonStyle, background: "#15803D" }}
+            onClick={() => setShowDiscussionForm((value) => !value)}
+          >
+            {showDiscussionForm ? "Cancel" : "+ New discussion"}
+          </button>
+        </div>
+      </header>
+
+      {message && (
+        <div
+          role="status"
+          style={{
+            padding: 12,
+            border: "1px solid #166534",
+            borderRadius: 10,
+            background: "#102417",
+            color: "#86EFAC",
+          }}
+        >
+          {message}
+        </div>
+      )}
+
+      {errorMessage && (
+        <div
+          role="alert"
+          style={{
+            padding: 12,
+            border: "1px solid #7F1D1D",
+            borderRadius: 10,
+            background: "#2A1111",
+            color: "#FCA5A5",
+            overflowWrap: "anywhere",
+          }}
+        >
+          {errorMessage}
+        </div>
+      )}
+
+      {showGroupForm && isAdmin && (
+        <form onSubmit={createGroup} style={panelStyle}>
+          <h2 style={{ fontSize: 18, fontWeight: 700 }}>Create a group</h2>
+          <label style={{ display: "block", marginTop: 12 }}>
+            Group name
+            <input
+              style={inputStyle}
+              value={groupName}
+              onChange={(event) => setGroupName(event.target.value)}
+              required
+              maxLength={100}
+              placeholder="e.g. Central Region Coordinators"
+            />
+          </label>
+          <label style={{ display: "block", marginTop: 12 }}>
+            Description
+            <textarea
+              style={inputStyle}
+              value={groupDescription}
+              onChange={(event) => setGroupDescription(event.target.value)}
+              rows={3}
+              maxLength={1000}
+              placeholder="What is this group for?"
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={saving}
+            style={{ ...buttonStyle, marginTop: 14, opacity: saving ? 0.6 : 1 }}
+          >
+            {saving ? "Creating…" : "Create group"}
+          </button>
+        </form>
+      )}
+
+      {showDiscussionForm && (
+        <form onSubmit={createDiscussion} style={panelStyle}>
+          <h2 style={{ fontSize: 18, fontWeight: 700 }}>
+            Start a discussion
+          </h2>
+          <p style={{ color: "#A7B0A9", fontSize: 13, marginTop: 5 }}>
+            {selectedGroupId
+              ? "This discussion will be visible to members of the selected group."
+              : "This discussion will appear in the national discussion space."}
+          </p>
+          <label style={{ display: "block", marginTop: 12 }}>
+            Title
+            <input
+              style={inputStyle}
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              required
+              maxLength={180}
+              placeholder="What would you like to discuss?"
+            />
+          </label>
+          <label style={{ display: "block", marginTop: 12 }}>
+            Message
+            <textarea
+              style={inputStyle}
+              value={body}
+              onChange={(event) => setBody(event.target.value)}
+              required
+              rows={4}
+              maxLength={10000}
+              placeholder="Share your idea, question or experience…"
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={saving}
+            style={{ ...buttonStyle, marginTop: 14, opacity: saving ? 0.6 : 1 }}
+          >
+            {saving ? "Publishing…" : "Publish discussion"}
+          </button>
+        </form>
+      )}
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(190px, 0.75fr) minmax(0, 1.5fr)",
+          gap: 16,
+          alignItems: "start",
+        }}
+      >
+        <aside style={panelStyle}>
+          <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 12 }}>
+            Discussion spaces
+          </h2>
+
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedGroupId(null);
+              setSelectedDiscussionId("");
+              setMessage("");
+            }}
+            style={{
+              ...buttonStyle,
+              display: "block",
+              width: "100%",
+              textAlign: "left",
+              background: selectedGroupId === null ? "#1D4D2A" : "#080B09",
+              marginBottom: 8,
+            }}
+          >
+            National discussions
+          </button>
+
+          <p
+            style={{
+              color: "#7F8B82",
+              fontSize: 11,
+              fontWeight: 700,
+              letterSpacing: 1,
+              margin: "18px 0 9px",
+            }}
+          >
+            GROUPS
+          </p>
+
+          {groups.length === 0 ? (
+            <p style={{ color: "#8D998F", fontSize: 13 }}>
+              No groups have been created yet.
+            </p>
+          ) : (
+            groups.map((group) => (
+              <button
+                key={group.id}
+                type="button"
+                onClick={() => {
+                  setSelectedGroupId(group.id);
+                  setSelectedDiscussionId("");
+                  setMessage("");
+                }}
+                style={{
+                  ...buttonStyle,
+                  display: "block",
+                  width: "100%",
+                  textAlign: "left",
+                  background:
+                    selectedGroupId === group.id ? "#1D4D2A" : "#080B09",
+                  marginBottom: 8,
+                }}
+              >
+                <strong style={{ display: "block" }}>{group.name}</strong>
+                <span
+                  style={{
+                    display: "block",
+                    color: "#A7B0A9",
+                    fontSize: 12,
+                    marginTop: 4,
+                  }}
+                >
+                  {group.description || "Coordinator group"}
+                </span>
+              </button>
+            ))
+          )}
+
+          {isAdmin && selectedGroupId && (
+            <div
+              style={{
+                marginTop: 20,
+                paddingTop: 16,
+                borderTop: "1px solid #26352B",
+              }}
+            >
+              <h3 style={{ fontSize: 15, fontWeight: 700 }}>
+                Manage group members
+              </h3>
+              <p style={{ color: "#8D998F", fontSize: 12, marginTop: 5 }}>
+                Add approved coordinators to this group.
+              </p>
+
+              <form onSubmit={addGroupMember} style={{ marginTop: 12 }}>
+                <label style={{ display: "block", fontSize: 13 }}>
+                  Select coordinator
+                  <select
+                    value={selectedUserToAdd}
+                    onChange={(event) => setSelectedUserToAdd(event.target.value)}
+                    style={inputStyle}
+                    required
+                  >
+                    <option value="">Choose a coordinator…</option>
+                    {approvedUsers
+                      .filter(
+                        (user) =>
+                          !memberships.some(
+                            (member) => member.user_id === user.id,
+                          ),
+                      )
+                      .map((user) => (
+                        <option key={user.id} value={user.id}>
+                          {user.full_name || user.email || user.id}
+                          {user.email ? ` — ${user.email}` : ""}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+                <button
+                  type="submit"
+                  disabled={saving || !selectedUserToAdd}
+                  style={{
+                    ...buttonStyle,
+                    width: "100%",
+                    marginTop: 10,
+                    opacity: saving || !selectedUserToAdd ? 0.6 : 1,
+                  }}
+                >
+                  {saving ? "Saving…" : "+ Add coordinator"}
+                </button>
+              </form>
+
+              <h4 style={{ fontSize: 13, fontWeight: 700, marginTop: 20 }}>
+                Current members ({memberships.length})
+              </h4>
+
+              {memberships.length === 0 ? (
+                <p style={{ color: "#8D998F", fontSize: 12, marginTop: 8 }}>
+                  No members yet. Add a coordinator above.
+                </p>
+              ) : (
+                <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+                  {memberships.map((member) => {
+                    const user = approvedUsers.find(
+                      (item) => item.id === member.user_id,
+                    );
+
+                    return (
+                      <div
+                        key={member.user_id}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: 8,
+                          padding: 9,
+                          border: "1px solid #26352B",
+                          borderRadius: 9,
+                          background: "#080B09",
+                        }}
+                      >
+                        <div style={{ minWidth: 0, overflowWrap: "anywhere" }}>
+                          <p style={{ fontSize: 12, fontWeight: 600 }}>
+                            {user?.full_name || "Coordinator"}
+                          </p>
+                          {user?.email && (
+                            <p
+                              style={{
+                                color: "#8D998F",
+                                fontSize: 11,
+                                marginTop: 3,
+                              }}
+                            >
+                              {user.email}
+                            </p>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          disabled={saving}
+                          onClick={() => void removeGroupMember(member.user_id)}
+                          style={{
+                            ...buttonStyle,
+                            background: "#351616",
+                            borderColor: "#713333",
+                            fontSize: 11,
+                            padding: "6px 8px",
+                            flexShrink: 0,
+                            opacity: saving ? 0.6 : 1,
+                          }}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          <p style={{ color: "#7F8B82", fontSize: 12, marginTop: 18 }}>
+            Group discussions require membership. Ask a National Administrator
+            to add you to a group.
+          </p>
+        </aside>
+
+        <div style={{ display: "grid", gap: 16, minWidth: 0 }}>
+          <section style={panelStyle}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 12,
+                alignItems: "center",
+                flexWrap: "wrap",
+              }}
+            >
+              <h2 style={{ fontSize: 18, fontWeight: 700 }}>
+                {selectedGroupId
+                  ? groups.find((group) => group.id === selectedGroupId)?.name ??
+                    "Group discussions"
+                  : "National discussions"}
+              </h2>
+              <button
+                type="button"
+                style={buttonStyle}
+                onClick={() => void loadDiscussions()}
+              >
+                Refresh
+              </button>
+            </div>
+
+            {loading ? (
+              <p style={{ color: "#A7B0A9", marginTop: 16 }}>
+                Loading discussions…
+              </p>
+            ) : discussions.length === 0 ? (
+              <div
+                style={{
+                  marginTop: 16,
+                  padding: 18,
+                  border: "1px dashed #344139",
+                  borderRadius: 12,
+                }}
+              >
+                <p style={{ fontWeight: 600 }}>No discussions yet</p>
+                <p style={{ color: "#A7B0A9", fontSize: 13, marginTop: 5 }}>
+                  Start a constructive conversation in this space.
+                </p>
+              </div>
+            ) : (
+              <div style={{ display: "grid", gap: 10, marginTop: 16 }}>
+                {discussions.map((discussion) => (
+                  <button
+                    key={discussion.id}
+                    type="button"
+                    onClick={() => setSelectedDiscussionId(discussion.id)}
+                    style={{
+                      display: "block",
+                      width: "100%",
+                      textAlign: "left",
+                      padding: 14,
+                      borderRadius: 11,
+                      border:
+                        selectedDiscussionId === discussion.id
+                          ? "1px solid #22C55E"
+                          : "1px solid #26352B",
+                      background:
+                        selectedDiscussionId === discussion.id
+                          ? "#13261A"
+                          : "#080B09",
+                      color: "#FFFFFF",
+                      cursor: "pointer",
+                      overflowWrap: "anywhere",
+                    }}
+                  >
+                    <strong style={{ display: "block" }}>
+                      {discussion.title}
+                    </strong>
+                    <span
+                      style={{
+                        display: "block",
+                        color: "#C1C9C2",
+                        fontSize: 13,
+                        marginTop: 7,
+                        whiteSpace: "pre-wrap",
+                      }}
+                    >
+                      {discussion.body.length > 220
+                        ? `${discussion.body.slice(0, 220)}…`
+                        : discussion.body}
+                    </span>
+                    <span
+                      style={{
+                        display: "block",
+                        color: "#7F8B82",
+                        fontSize: 11,
+                        marginTop: 10,
+                      }}
+                    >
+                      {new Date(discussion.created_at).toLocaleString()}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </section>
+
+          {selectedDiscussion && (
+            <section style={panelStyle}>
+              <h2 style={{ fontSize: 20, fontWeight: 750 }}>
+                {selectedDiscussion.title}
+              </h2>
+              <p
+                style={{
+                  color: "#D1D5DB",
+                  whiteSpace: "pre-wrap",
+                  overflowWrap: "anywhere",
+                  marginTop: 12,
+                }}
+              >
+                {selectedDiscussion.body}
+              </p>
+              <p style={{ color: "#7F8B82", fontSize: 11, marginTop: 10 }}>
+                Posted {new Date(selectedDiscussion.created_at).toLocaleString()}
+              </p>
+
+              <div
+                style={{
+                  borderTop: "1px solid #26352B",
+                  marginTop: 20,
+                  paddingTop: 16,
+                }}
+              >
+                <h3 style={{ fontWeight: 700, marginBottom: 12 }}>
+                  Replies ({replies.length})
+                </h3>
+
+                {replies.length === 0 ? (
+                  <p style={{ color: "#8D998F", fontSize: 13 }}>
+                    No replies yet. Be the first to respond.
+                  </p>
+                ) : (
+                  <div style={{ display: "grid", gap: 10 }}>
+                    {replies.map((reply) => (
+                      <article
+                        key={reply.id}
+                        style={{
+                          border: "1px solid #26352B",
+                          borderRadius: 10,
+                          padding: 12,
+                          background: "#080B09",
+                        }}
+                      >
+                        <p
+                          style={{
+                            whiteSpace: "pre-wrap",
+                            overflowWrap: "anywhere",
+                          }}
+                        >
+                          {reply.body}
+                        </p>
+                        <p
+                          style={{
+                            color: "#7F8B82",
+                            fontSize: 11,
+                            marginTop: 9,
+                          }}
+                        >
+                          {new Date(reply.created_at).toLocaleString()}
+                        </p>
+                      </article>
+                    ))}
+                  </div>
+                )}
+
+                <form onSubmit={createReply} style={{ marginTop: 16 }}>
+                  <label style={{ display: "block" }}>
+                    Your reply
+                    <textarea
+                      style={inputStyle}
+                      value={replyBody}
+                      onChange={(event) => setReplyBody(event.target.value)}
+                      required
+                      rows={3}
+                      maxLength={5000}
+                      placeholder="Write a constructive response…"
+                    />
+                  </label>
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    style={{
+                      ...buttonStyle,
+                      marginTop: 10,
+                      opacity: saving ? 0.6 : 1,
+                    }}
+                  >
+                    {saving ? "Posting…" : "Post reply"}
+                  </button>
+                </form>
+              </div>
+            </section>
+          )}
+        </div>
+      </div>
+
+      <p style={{ color: "#718075", fontSize: 12 }}>
+        Messages are checked before posting. Full AI moderation requires a
+        server-side OPENAI_API_KEY; otherwise, only basic safety rules run.
+      </p>
+    </section>
+  );
+}
