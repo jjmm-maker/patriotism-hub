@@ -1,6 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase";
+import AnnouncementsPanel from "@/components/announcements-panel";
+import DiscussionsPanel from "@/components/discussions-panel";
+import SchoolsPanel from "@/components/schools-panel";
+import AdministrationPanel from "@/components/administration-panel";
+import MeetingsPanel from "@/components/meetings-panel";
+import SchoolReportsPanel from "@/components/school-reports-panel";
 
 const navigation = [
   { name: "Overview", icon: "◫" },
@@ -9,33 +16,7 @@ const navigation = [
   { name: "School reports", icon: "▥" },
   { name: "Meetings", icon: "▦" },
   { name: "Schools", icon: "⌂" },
-];
-
-const announcements = [
-  {
-    category: "NATIONAL UPDATE",
-    title: "Welcome to Patriotism School Hub",
-    description:
-      "A central space for school coordinators to share updates, exchange ideas and coordinate patriotism programmes.",
-    date: "Platform announcement",
-    color: "gold",
-  },
-  {
-    category: "PROGRAMME PLANNING",
-    title: "Share your school's programme priorities",
-    description:
-      "Coordinators will be able to submit suggestions and highlight challenges affecting activities at their schools.",
-    date: "Planning and coordination",
-    color: "blue",
-  },
-  {
-    category: "COMMUNITY",
-    title: "Building a stronger coordination network",
-    description:
-      "Use the hub to support constructive discussion, collaboration and the exchange of practical ideas.",
-    date: "Community update",
-    color: "green",
-  },
+  { name: "Administration", icon: "⚙" },
 ];
 
 const activities = [
@@ -43,349 +24,424 @@ const activities = [
     initials: "NA",
     title: "National announcements",
     detail: "Updates shared with school coordinators",
-    status: "Coming soon",
+    status: "Connected",
+    page: "Announcements",
   },
   {
     initials: "SR",
     title: "School reports",
     detail: "Suggestions, challenges and follow-up",
-    status: "Coming soon",
+    status: "Connected",
+    page: "School reports",
   },
   {
     initials: "MT",
     title: "Programme meetings",
     detail: "Meeting schedules and joining links",
-    status: "Coming soon",
+    status: "Connected",
+    page: "Meetings",
   },
 ];
 
 export default function Home() {
   const [activePage, setActivePage] = useState("Overview");
-  const [search, setSearch] = useState("");
   const [notice, setNotice] = useState("");
+  const [dashboardStats, setDashboardStats] = useState({
+    schools: "—",
+    announcements: "—",
+    openReports: "—",
+    meetings: "—",
+  });
 
-  const visibleAnnouncements = announcements.filter((item) =>
-    `${item.title} ${item.description} ${item.category}`
-      .toLowerCase()
-      .includes(search.toLowerCase()),
-  );
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadDashboardStats() {
+      const now = new Date().toISOString();
+
+      const [schools, announcements, reports, meetings] = await Promise.all([
+        supabase.from("schools").select("id", { count: "exact", head: true }),
+        supabase
+          .from("announcements")
+          .select("id", { count: "exact", head: true })
+          .eq("published", true),
+        supabase
+          .from("school_reports")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "open"),
+        supabase
+          .from("meetings")
+          .select("id", { count: "exact", head: true })
+          .gte("meeting_date", now),
+      ]);
+
+      if (cancelled) return;
+
+      setDashboardStats({
+        schools: schools.error ? "—" : String(schools.count ?? 0),
+        announcements: announcements.error
+          ? "—"
+          : String(announcements.count ?? 0),
+        openReports: reports.error ? "—" : String(reports.count ?? 0),
+        meetings: meetings.error ? "—" : String(meetings.count ?? 0),
+      });
+    }
+
+    void loadDashboardStats();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function choosePage(name: string) {
     setActivePage(name);
-    setNotice(
-      name === "Overview"
-        ? ""
-        : `${name} workspace selected. Database and account features will be connected in the next stages.`,
-    );
+    setNotice("");
   }
 
   function quickAction(name: string) {
+    if (name === "Create announcement") {
+      setActivePage("Announcements");
+      setNotice("");
+      return;
+    }
+
+    const activity = activities.find((item) => item.title === name);
+
+    if (activity) {
+      choosePage(activity.page);
+      return;
+    }
+
     setNotice(
-      `${name} is planned for the next development stage. This prototype does not submit or save real information yet.`,
+      `${name} is planned for the next development stage. This feature is not connected yet.`,
     );
   }
 
   return (
     <main className="hub">
-      <aside className="sidebar">
-        <div className="brand">
-          <div className="brand-emblem">P</div>
-          <div>
-            <div className="brand-name">PATRIOTISM</div>
-            <div className="brand-subtitle">SCHOOL HUB</div>
-          </div>
+      {activePage === "Administration" ? (
+        <div className="min-h-screen bg-black p-4 text-white sm:p-8">
+          <button
+            type="button"
+            onClick={() => choosePage("Overview")}
+            className="mb-6 rounded-xl border border-gray-700 px-4 py-2 text-sm text-gray-200 transition hover:border-green-500"
+          >
+            ← Back to overview
+          </button>
+          <AdministrationPanel />
         </div>
-
-        <div className="workspace-label">WORKSPACE</div>
-        <div className="workspace">
-          <div className="workspace-icon">UG</div>
-          <div className="workspace-copy">
-            <strong>National Coordination</strong>
-            <span>Uganda · Pilot workspace</span>
-          </div>
-          <span className="workspace-arrow">⌄</span>
+      ) : activePage === "School reports" ? (
+        <div className="min-h-screen bg-black p-4 text-white sm:p-8">
+          <button
+            type="button"
+            onClick={() => choosePage("Overview")}
+            className="mb-5 rounded-lg border border-green-800 px-4 py-2 text-sm text-green-300 hover:bg-green-950"
+          >
+            ← Back to overview
+          </button>
+          <SchoolReportsPanel />
         </div>
-
-        <div className="nav-label">MAIN MENU</div>
-        <nav className="navigation" aria-label="Main navigation">
-          {navigation.map((item) => (
-            <button
-              className={`nav-item ${activePage === item.name ? "active" : ""}`}
-              key={item.name}
-              onClick={() => choosePage(item.name)}
-            >
-              <span className="nav-icon">{item.icon}</span>
-              <span>{item.name}</span>
-              {item.name === "School reports" && (
-                <span className="nav-dot" />
-              )}
-            </button>
-          ))}
-        </nav>
-
-        <div className="sidebar-bottom">
-          <div className="help-card">
-            <div className="help-symbol">✳</div>
-            <strong>Working together</strong>
-            <p>A shared space for better coordination across schools.</p>
-          </div>
-          <div className="profile">
-            <div className="avatar">GU</div>
-            <div className="profile-copy">
-              <strong>Guest user</strong>
-              <span>Preview mode</span>
-            </div>
-            <span className="profile-menu">•••</span>
-          </div>
+      ) : activePage === "Schools" ? (
+        <div className="min-h-screen bg-black p-4 text-white sm:p-8">
+          <button
+            type="button"
+            onClick={() => choosePage("Overview")}
+            className="mb-6 rounded-xl border border-gray-700 px-4 py-2 text-sm text-gray-200 transition hover:border-green-500"
+          >
+            ← Back to overview
+          </button>
+          <SchoolsPanel />
         </div>
-      </aside>
-
-      <section className="main-area">
-        <header className="topbar">
-          <div className="breadcrumb">
-            <span>Patriotism Hub</span>
-            <span className="breadcrumb-slash">/</span>
-            <strong>{activePage}</strong>
-          </div>
-          <div className="topbar-right">
-            <span className="preview-badge">
-              <span className="status-dot" />
-              Prototype
-            </span>
-            <button
-              className="icon-button"
-              aria-label="Notifications"
-              onClick={() =>
-                setNotice("Notifications will be available after account setup.")
-              }
-            >
-              ♧
-            </button>
-            <div className="top-avatar">GU</div>
-          </div>
-        </header>
-
-        <div className="page-content">
-          <section className="welcome-row">
-            <div>
-              <div className="eyebrow">
-                NATIONAL COORDINATION PLATFORM
+      ) : activePage === "Meetings" ? (
+        <div className="min-h-screen bg-black p-4 text-white sm:p-8">
+          <button
+            type="button"
+            onClick={() => choosePage("Overview")}
+            className="mb-6 rounded-xl border border-gray-700 px-4 py-2 text-sm text-gray-200 transition hover:border-green-500"
+          >
+            ← Back to overview
+          </button>
+          <MeetingsPanel />
+        </div>
+      ) : activePage === "Discussions" ? (
+        <div className="min-h-screen bg-black p-4 text-white sm:p-8">
+          <button
+            type="button"
+            onClick={() => choosePage("Overview")}
+            className="mb-6 rounded-xl border border-gray-700 px-4 py-2 text-sm text-gray-200 transition hover:border-green-500"
+          >
+            ← Back to overview
+          </button>
+          <DiscussionsPanel />
+        </div>
+      ) : activePage === "Announcements" ? (
+        <div className="min-h-screen bg-black p-4 text-white sm:p-8">
+          <button
+            type="button"
+            onClick={() => choosePage("Overview")}
+            className="mb-6 rounded-xl border border-gray-700 px-4 py-2 text-sm text-gray-200 transition hover:border-green-500"
+          >
+            ← Back to overview
+          </button>
+          <AnnouncementsPanel />
+        </div>
+      ) : (
+        <>
+          <aside className="sidebar">
+            <div className="brand">
+              <div className="brand-emblem">P</div>
+              <div>
+                <div className="brand-name">PATRIOTISM</div>
+                <div className="brand-subtitle">SCHOOL HUB</div>
               </div>
-              <h1>
-                {activePage === "Overview"
-                  ? "Welcome to the Hub"
-                  : activePage}
-              </h1>
-              <p className="welcome-description">
-                {activePage === "Overview"
-                  ? "One connected space to coordinate patriotism programmes across Uganda's schools."
-                  : `A shared workspace for ${activePage.toLowerCase()} and national school coordination.`}
-              </p>
             </div>
-            <button
-              className="primary-button"
-              onClick={() => quickAction("Create announcement")}
-            >
-              <span>＋</span> New announcement
-            </button>
-          </section>
 
-          {notice && (
-            <div className="notice" role="status">
-              <span>{notice}</span>
-              <button
-                aria-label="Dismiss message"
-                onClick={() => setNotice("")}
-              >
-                ×
-              </button>
+            <div className="workspace-label">WORKSPACE</div>
+            <div className="workspace">
+              <div className="workspace-icon">UG</div>
+              <div className="workspace-copy">
+                <strong>National Coordination</strong>
+                <span>Uganda · Pilot workspace</span>
+              </div>
+              <span className="workspace-arrow">⌄</span>
             </div>
-          )}
 
-          <section className="welcome-banner">
-            <div className="banner-content">
-              <div className="banner-tag">
-                <span className="banner-tag-dot" />
-                A SHARED NATIONAL MISSION
+            <div className="nav-label">MAIN MENU</div>
+            <nav className="navigation" aria-label="Main navigation">
+              {navigation.map((item) => (
+                <button
+                  type="button"
+                  className={`nav-item ${activePage === item.name ? "active" : ""}`}
+                  key={item.name}
+                  onClick={() => choosePage(item.name)}
+                >
+                  <span className="nav-icon">{item.icon}</span>
+                  <span>{item.name}</span>
+                  {item.name === "School reports" && (
+                    <span className="nav-dot" />
+                  )}
+                </button>
+              ))}
+            </nav>
+
+            <div className="sidebar-bottom">
+              <div className="help-card">
+                <div className="help-symbol">✳</div>
+                <strong>Working together</strong>
+                <p>A shared space for better coordination across schools.</p>
               </div>
-              <h2>Connected schools. Shared purpose.</h2>
-              <p>
-                Bringing coordinators together to share information,
-                strengthen collaboration and support patriotism programmes.
-              </p>
-              <button
-                className="banner-button"
-                onClick={() => choosePage("Announcements")}
-              >
-                Explore announcements <span>→</span>
-              </button>
+              <div className="profile">
+                <div className="avatar">GU</div>
+                <div className="profile-copy">
+                  <strong>Guest user</strong>
+                  <span>Preview mode</span>
+                </div>
+                <span className="profile-menu">•••</span>
+              </div>
             </div>
-            <div className="banner-art" aria-hidden="true">
-              <div className="art-orbit orbit-one" />
-              <div className="art-orbit orbit-two" />
-              <div className="art-circle">
-                <span>UG</span>
-                <div className="art-star">✦</div>
-              </div>
-              <div className="art-caption">ONE COMMUNITY</div>
-            </div>
-          </section>
+          </aside>
 
-          <section className="section-heading">
-            <div>
-              <h2>Coordination overview</h2>
-              <p>Your programme information, organised in one place.</p>
-            </div>
-            <span className="period-label">PILOT WORKSPACE</span>
-          </section>
+          <section className="main-area">
+            <header className="topbar">
+              <div className="breadcrumb">
+                <span>Patriotism Hub</span>
+                <span className="breadcrumb-slash">/</span>
+                <strong>{activePage}</strong>
+              </div>
+              <div className="topbar-right">
+                <span className="preview-badge">
+                  <span className="status-dot" />
+                  Prototype
+                </span>
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label="Notifications"
+                  onClick={() =>
+                    setNotice(
+                      "Notifications will be available after account setup.",
+                    )
+                  }
+                >
+                  ♧
+                </button>
+                <div className="top-avatar">GU</div>
+              </div>
+            </header>
 
-          <section className="stat-grid">
-            <article className="stat-card">
-              <div className="stat-top">
-                <span className="stat-icon icon-schools">⌂</span>
-                <span className="stat-label">NETWORK</span>
-              </div>
-              <div className="stat-value">—</div>
-              <div className="stat-title">Registered schools</div>
-              <div className="stat-foot">Available after database setup</div>
-            </article>
-            <article className="stat-card">
-              <div className="stat-top">
-                <span className="stat-icon icon-updates">▤</span>
-                <span className="stat-label">INFORMATION</span>
-              </div>
-              <div className="stat-value">03</div>
-              <div className="stat-title">Sample announcements</div>
-              <div className="stat-foot">Illustrative content only</div>
-            </article>
-            <article className="stat-card">
-              <div className="stat-top">
-                <span className="stat-icon icon-reports">▥</span>
-                <span className="stat-label">FOLLOW-UP</span>
-              </div>
-              <div className="stat-value">—</div>
-              <div className="stat-title">Open school issues</div>
-              <div className="stat-foot">Issue tracking not connected yet</div>
-            </article>
-            <article className="stat-card">
-              <div className="stat-top">
-                <span className="stat-icon icon-meetings">▦</span>
-                <span className="stat-label">SCHEDULING</span>
-              </div>
-              <div className="stat-value">—</div>
-              <div className="stat-title">Upcoming meetings</div>
-              <div className="stat-foot">Meeting service not connected yet</div>
-            </article>
-          </section>
-
-          <div className="content-grid">
-            <section className="panel announcements-panel">
-              <div className="panel-heading">
+            <div className="page-content">
+              <section className="welcome-row">
                 <div>
-                  <h2>Latest announcements</h2>
-                  <p>Important information for the network</p>
+                  <div className="eyebrow">
+                    NATIONAL COORDINATION PLATFORM
+                  </div>
+                  <h1>
+                    {activePage === "Overview"
+                      ? "Welcome to the Hub"
+                      : activePage}
+                  </h1>
+                  <p className="welcome-description">
+                    {activePage === "Overview"
+                      ? "One connected space to coordinate patriotism programmes across Uganda's schools."
+                      : `A shared workspace for ${activePage.toLowerCase()} and national school coordination.`}
+                  </p>
                 </div>
                 <button
-                  className="text-button"
-                  onClick={() => choosePage("Announcements")}
+                  type="button"
+                  className="primary-button"
+                  onClick={() => quickAction("Create announcement")}
                 >
-                  View all <span>→</span>
+                  <span>＋</span> New announcement
                 </button>
-              </div>
+              </section>
 
-              <div className="search-box">
-                <span>⌕</span>
-                <input
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Search announcements..."
-                  aria-label="Search announcements"
-                />
-                {search && (
+              {notice && (
+                <div className="notice" role="status">
+                  <span>{notice}</span>
                   <button
-                    onClick={() => setSearch("")}
-                    aria-label="Clear search"
+                    type="button"
+                    aria-label="Dismiss message"
+                    onClick={() => setNotice("")}
                   >
                     ×
                   </button>
-                )}
-              </div>
+                </div>
+              )}
 
-              <div className="announcement-list">
-                {visibleAnnouncements.map((item) => (
-                  <article className="announcement" key={item.title}>
-                    <div className={`announcement-marker ${item.color}`}>
-                      {item.color === "gold"
-                        ? "✦"
-                        : item.color === "blue"
-                          ? "↗"
-                          : "◎"}
-                    </div>
-                    <div className="announcement-body">
-                      <div className="announcement-category">
-                        {item.category}
-                      </div>
-                      <h3>{item.title}</h3>
-                      <p>{item.description}</p>
-                      <div className="announcement-date">{item.date}</div>
-                    </div>
-                    <span className="announcement-arrow">↗</span>
-                  </article>
-                ))}
-                {visibleAnnouncements.length === 0 && (
-                  <div className="empty-state">
-                    No announcements match your search.
+              <section className="welcome-banner">
+                <div className="banner-content">
+                  <div className="banner-tag">
+                    <span className="banner-tag-dot" />
+                    A SHARED NATIONAL MISSION
                   </div>
-                )}
-              </div>
-            </section>
-
-            <section className="panel activity-panel">
-              <div className="panel-heading">
-                <div>
-                  <h2>Programme centre</h2>
-                  <p>Tools for coordinating activities</p>
-                </div>
-                <span className="panel-more">•••</span>
-              </div>
-
-              <div className="activity-list">
-                {activities.map((item) => (
-                  <button
-                    className="activity-item"
-                    key={item.title}
-                    onClick={() => quickAction(item.title)}
-                  >
-                    <div className="activity-avatar">{item.initials}</div>
-                    <div className="activity-copy">
-                      <strong>{item.title}</strong>
-                      <span>{item.detail}</span>
-                      <span className="coming-soon">{item.status}</span>
-                    </div>
-                    <span className="activity-arrow">→</span>
-                  </button>
-                ))}
-              </div>
-
-              <div className="coordination-note">
-                <span className="note-icon">✧</span>
-                <div>
-                  <strong>Designed for collaboration</strong>
+                  <h2>Connected schools. Shared purpose.</h2>
                   <p>
-                    Share ideas, raise challenges and coordinate action
-                    across the school network.
+                    Bringing coordinators together to share information,
+                    strengthen collaboration and support patriotism programmes.
                   </p>
+                  <button
+                    type="button"
+                    className="banner-button"
+                    onClick={() => choosePage("Announcements")}
+                  >
+                    Explore announcements <span>→</span>
+                  </button>
                 </div>
-              </div>
-            </section>
-          </div>
+                <div className="banner-art" aria-hidden="true">
+                  <div className="art-orbit orbit-one" />
+                  <div className="art-orbit orbit-two" />
+                  <div className="art-circle">
+                    <span>UG</span>
+                    <div className="art-star">✦</div>
+                  </div>
+                  <div className="art-caption">ONE COMMUNITY</div>
+                </div>
+              </section>
 
-          <footer className="footer">
-            <span>Patriotism School Hub</span>
-            <span>Early prototype · Sample data only</span>
-          </footer>
-        </div>
-      </section>
+              <section className="section-heading">
+                <div>
+                  <h2>Coordination overview</h2>
+                  <p>Your programme information, organised in one place.</p>
+                </div>
+                <span className="period-label">PILOT WORKSPACE</span>
+              </section>
+
+              <section className="stat-grid">
+                <article className="stat-card">
+                  <div className="stat-top">
+                    <span className="stat-icon icon-schools">⌂</span>
+                    <span className="stat-label">NETWORK</span>
+                  </div>
+                  <div className="stat-value">{dashboardStats.schools}</div>
+                  <div className="stat-title">Registered schools</div>
+                  <div className="stat-foot">
+                    Live count from registered school records
+                  </div>
+                </article>
+                <article className="stat-card">
+                  <div className="stat-top">
+                    <span className="stat-icon icon-updates">▤</span>
+                    <span className="stat-label">INFORMATION</span>
+                  </div>
+                  <div className="stat-value">{dashboardStats.announcements}</div>
+                  <div className="stat-title">Published announcements</div>
+                  <div className="stat-foot">
+                    Supabase-connected announcements
+                  </div>
+                </article>
+                <article className="stat-card">
+                  <div className="stat-top">
+                    <span className="stat-icon icon-reports">▥</span>
+                    <span className="stat-label">FOLLOW-UP</span>
+                  </div>
+                  <div className="stat-value">{dashboardStats.openReports}</div>
+                  <div className="stat-title">Open school issues</div>
+                  <div className="stat-foot">Reports currently marked open</div>
+                </article>
+                <article className="stat-card">
+                  <div className="stat-top">
+                    <span className="stat-icon icon-meetings">▦</span>
+                    <span className="stat-label">SCHEDULING</span>
+                  </div>
+                  <div className="stat-value">{dashboardStats.meetings}</div>
+                  <div className="stat-title">Upcoming meetings</div>
+                  <div className="stat-foot">
+                    Scheduled meetings from the database
+                  </div>
+                </article>
+              </section>
+
+              <div className="content-grid">
+                <section className="panel activity-panel">
+                  <div className="panel-heading">
+                    <div>
+                      <h2>Programme centre</h2>
+                      <p>Tools for coordinating activities</p>
+                    </div>
+                    <span className="panel-more">•••</span>
+                  </div>
+
+                  <div className="activity-list">
+                    {activities.map((item) => (
+                      <button
+                        type="button"
+                        className="activity-item"
+                        key={item.title}
+                        onClick={() => quickAction(item.title)}
+                      >
+                        <div className="activity-avatar">{item.initials}</div>
+                        <div className="activity-copy">
+                          <strong>{item.title}</strong>
+                          <span>{item.detail}</span>
+                          <span className="coming-soon">{item.status}</span>
+                        </div>
+                        <span className="activity-arrow">→</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="coordination-note">
+                    <span className="note-icon">✧</span>
+                    <div>
+                      <strong>Designed for collaboration</strong>
+                      <p>
+                        Share ideas, raise challenges and coordinate action
+                        across the school network.
+                      </p>
+                    </div>
+                  </div>
+                </section>
+              </div>
+
+              <footer className="footer">
+                <span>Patriotism School Hub</span>
+                <span>Early prototype · Supabase-connected announcements</span>
+              </footer>
+            </div>
+          </section>
+        </>
+      )}
     </main>
   );
 }

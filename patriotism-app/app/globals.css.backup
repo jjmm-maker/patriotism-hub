@@ -1,0 +1,320 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Authentication and account approval screens */
+.auth-shell {
+  min-height: 100vh;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 18px;
+  background:
+    radial-gradient(ellipse at top, rgba(22, 163, 74, 0.14), transparent 55%),
+    #080b09;
+  color: #f5f5f7;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 440px;
+  box-sizing: border-box;
+  padding: 36px;
+  border: 1px solid #29362d;
+  border-radius: 18px;
+  background: #111914;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.28);
+}
+
+.auth-emblem {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  margin-bottom: 22px;
+  border-radius: 14px;
+  background: #16a34a;
+  color: #ffffff;
+  font-size: 27px;
+  font-weight: 800;
+}
+
+.auth-kicker {
+  margin: 0 0 10px;
+  color: #86efac;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 2px;
+}
+
+.auth-card h1 {
+  margin: 0 0 12px;
+  color: #ffffff;
+  font-size: 28px;
+  line-height: 1.25;
+}
+
+.auth-description,
+.auth-card > p {
+  color: #a7a7ad;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.auth-label {
+  display: block;
+  margin-top: 18px;
+  color: #e5e5e7;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.auth-feedback {
+  padding: 12px;
+  border: 1px solid #31583b;
+  border-radius: 8px;
+  background: #14251a;
+  color: #bbf7d0;
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.auth-switch {
+  margin: 24px 0 0;
+  text-align: center;
+  font-size: 13px;
+}
+
+.auth-switch button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #4ade80;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.auth-message {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background: #080b09;
+  color: #f5f5f7;
+}
+
+@media (max-width: 480px) {
+  .auth-card {
+    padding: 25px 20px;
+  }
+
+  .auth-card h1 {
+    font-size: 24px;
+  }
+}
+
+/* Patriotism School Hub — black and emerald dashboard theme */
+
+.hub {
+  background: #080b09;
+  color: #f0f5f1;
+}
+
+.sidebar,
+.topbar {
+  background: #0b100c;
+  border-color: #26352a;
+}
+
+.brand-emblem,
+.workspace-icon,
+.avatar,
+.top-avatar {
+  background: #166534;
+  color: #dcfce7;
+}
+
+.brand-name,
+.workspace-copy strong,
+.profile-copy strong,
+.breadcrumb strong,
+.welcome-row h1,
+.section-heading h2,
+.panel-heading h2,
+.announcement h3,
+.activity-copy strong {
+  color: #f0fdf4;
+}
+
+.brand-subtitle,
+.workspace-copy span,
+.profile-copy span,
+.welcome-description,
+.section-heading p,
+.panel-heading p,
+.announcement p,
+.announcement-date,
+.activity-copy span,
+.footer {
+  color: #a3b5a7;
+}
+
+.nav-item {
+  color: #b7c5ba;
+}
+
+.nav-item:hover,
+.nav-item.active {
+  background: #14251a;
+  color: #86efac;
+}
+
+.nav-item.active {
+  box-shadow: inset 3px 0 #22c55e;
+}
+
+.nav-icon,
+.nav-dot,
+.status-dot,
+.banner-tag-dot {
+  color: #4ade80;
+}
+
+.nav-dot,
+.status-dot,
+.banner-tag-dot {
+  background: #22c55e;
+}
+
+.workspace,
+.help-card,
+.stat-card,
+.panel,
+.coordination-note {
+  background: #111914;
+  border-color: #293b2e;
+}
+
+.welcome-banner {
+  background: linear-gradient(120deg, #10271a 0%, #123d24 60%, #0c2114 100%);
+  border: 1px solid #285a37;
+}
+
+.banner-tag,
+.banner-art,
+.art-caption,
+.art-circle {
+  color: #bbf7d0;
+}
+
+.art-circle {
+  border-color: #4ade80;
+}
+
+.art-orbit {
+  border-color: rgba(134, 239, 172, 0.3);
+}
+
+.primary-button,
+.banner-button {
+  background: #16a34a;
+  color: #ffffff;
+  border-color: #16a34a;
+}
+
+.primary-button:hover,
+.banner-button:hover {
+  background: #15803d;
+}
+
+.text-button,
+.activity-arrow,
+.announcement-arrow {
+  color: #4ade80;
+}
+
+.icon-schools,
+.icon-updates,
+.icon-reports,
+.icon-meetings,
+.announcement-marker,
+.activity-avatar {
+  background: #193524;
+  color: #86efac;
+}
+
+.search-box {
+  background: #080b09;
+  border-color: #344638;
+}
+
+.search-box input {
+  color: #f0fdf4;
+}
+
+.search-box input::placeholder {
+  color: #819286;
+}
+
+.search-box button,
+.icon-button {
+  color: #bbf7d0;
+}
+
+.notice {
+  background: #14251a;
+  border-color: #31583b;
+  color: #dcfce7;
+}
+
+.period-label,
+.coming-soon {
+  color: #86efac;
+}
+
+.stat-foot,
+.stat-label,
+.eyebrow,
+.announcement-category {
+  color: #8da894;
+}
+
+.stat-value {
+  color: #4ade80;
+}
+
+.footer {
+  border-color: #26352a;
+}
+
+@media (max-width: 768px) {
+  .sidebar {
+    background: #0b100c;
+  }
+}
